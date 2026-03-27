@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="12dp"
+    android:gravity="center_vertical"
+    android:layout_marginBottom="10sp"
+    android:background="@drawable/rounded_item_background">
+
+    <!-- Employee Image -->
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/ivEmployeeImage"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:scaleType="centerCrop"
+        app:shapeAppearanceOverlay="@style/CircularImageView"
+        android:src="@drawable/user" />
+
+    <!-- Employee Details -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvEmployeeName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@android:color/black"
+            android:textSize="16sp"
+            android:textStyle="normal"
+            android:text="Employee Name" />
+
+        <TextView
+            android:id="@+id/tvEmpCode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@android:color/darker_gray"
+            android:textSize="14sp"
+            android:text="00000" />
+
+    </LinearLayout>
+
+    <!-- More Options Button -->
+    <ImageButton
+        android:id="@+id/btnMoreOptions"
+        android:layout_width="27dp"
+        android:layout_height="25dp"
+        android:adjustViewBounds="true"
+        android:contentDescription="More options"
+         />
+</LinearLayout>

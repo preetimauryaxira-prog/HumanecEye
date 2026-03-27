@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<defaultsMap>
+    <entry>
+        <key>force_update_version_code</key>
+        <value>1</value>
+    </entry>
+    <entry>
+        <key>optional_update_version_code</key>
+        <value>1</value>
+    </entry>
+    <entry>
+        <key>update_message</key>
+        <value>A new version of the app is available. Please update to the latest version for the best experience.</value>
+    </entry>
+    <entry>
+        <key>update_url</key>
+        <value>https://play.google.com/store/apps/details?id=com.xira.humanec_eye_app</value>
+    </entry>
+</defaultsMap>

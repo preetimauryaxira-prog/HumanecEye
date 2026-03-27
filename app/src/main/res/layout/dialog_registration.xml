@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="130dp"
+    android:orientation="horizontal"
+    android:fitsSystemWindows="true"
+    android:padding="12dp">
+
+    <ImageView
+        android:id="@+id/faceImageView"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:fitsSystemWindows="true"
+        android:layout_marginEnd="12dp"
+        android:layout_gravity="center_horizontal"
+        android:scaleType="centerCrop" />
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:gravity="start"
+        android:fitsSystemWindows="true"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <ImageButton
+            android:id="@+id/cancelBtn"
+            android:layout_gravity="end"
+            android:layout_width="20dp"
+            android:layout_height="17dp"
+            android:background="@drawable/back"
+            android:backgroundTint="@color/black_text"
+            android:backgroundTintMode="src_in" />
+        <TextView
+            android:id="@+id/employeeNameTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Employee Name"
+            android:textSize="16sp"
+            android:textStyle="bold"
+             />
+
+        <TextView
+            android:id="@+id/employeeCodeTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Employee Code"
+            android:textSize="15sp"
+            android:textStyle="bold"
+
+            android:layout_marginTop="2dp" />
+
+        <Button
+            android:id="@+id/addFaceBtn"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:backgroundTint="@color/mainColor"
+            android:textColor="@color/white"
+            android:text="Add Face"/>
+    </LinearLayout>
+
+
+
+</LinearLayout>

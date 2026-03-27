@@ -1,0 +1,51 @@
+<resources>
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/white</item>
+        <item name="colorPrimaryVariant">@color/mainColor</item>
+        <item name="colorOnPrimary">@color/mainColor</item>
+        <!-- Secondary brand color. -->
+        <item name="colorSecondary">@color/mainColor</item>
+        <item name="colorSecondaryVariant">@color/mainColor</item>
+        <item name="colorOnSecondary">@color/mainColor</item>
+
+        <!-- Set Status Bar Color to White -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/white</item>
+
+        <!-- Make Status Bar Icons Dark -->
+        <item name="android:windowLightStatusBar">true</item>
+
+        <item name="actionBarStyle">@style/CustomActionBar</item>
+        <item name="toolbarStyle">@style/CustomToolbar</item>
+
+        <!-- Customize your theme here. -->
+    </style>
+    <style name="TabLayoutUnselectedText" parent="TextAppearance.Design.Tab">
+        <item name="android:textStyle">normal</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@android:color/darker_gray</item> <!-- Unselected text color -->
+        <item name="fontFamily">@font/poppins_medium</item> <!-- Custom font -->
+    </style>
+    <style name="RoundedAlertDialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
+        <item name="dialogCornerRadius">16dp</item>
+        <item name="backgroundColor">@android:color/white</item>
+        <item name="buttonStyle">@style/DialogButtonStyle</item>
+    </style>
+
+    <style name="DialogButtonStyle" parent="Widget.MaterialComponents.Button.TextButton">
+        <item name="android:textColor">@color/black_text</item>
+        <item name="android:backgroundTint">@color/red_button</item>
+    </style>
+
+
+    <!-- Custom AppBar (Toolbar) Style -->
+    <style name="CustomActionBar" parent="Widget.MaterialComponents.ActionBar.Solid">
+        <item name="android:titleTextColor">@color/mainColor</item>
+    </style>
+
+    <style name="CustomToolbar" parent="Widget.MaterialComponents.Toolbar">
+        <item name="titleTextColor">@color/mainColor</item>
+    </style>
+</resources>

@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">HumanecEye</string>
+    <string name="employees">Employees</string>
+
+    <string name="profile">Settings</string>
+    <string name="login_title">Login with admin number</string>
+    <string name="login_detail"></string>
+    <string name="number_hint">Enter your number</string>
+    <string name="number_field_label">Phone Number</string>
+    <string name="login_btn_title">Verify</string>
+    <string name="back">Back</string>
+    <string name="otp_title">OTP has been sent to your number</string>
+    <string name="enter_your_number">Enter your Number</string>
+    <string name="userNumber">+91 9343234234</string>
+    <string name="login_by_pin">Login By Pin</string>
+    <string name="tab1">Register Employees</string>
+    <string name="tab2">Unregister Employees</string>
+    <string name="image">Logo</string>
+</resources>

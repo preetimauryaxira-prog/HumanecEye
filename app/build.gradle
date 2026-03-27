@@ -1,0 +1,123 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.google.gms.google.services)
+    alias(libs.plugins.google.firebase.crashlytics)
+
+}
+
+android {
+    namespace 'com.xira.humanec_eye_app'
+    compileSdk 36
+
+//    defaultConfig {
+//        applicationId "com.xira.humanec_eye_app"
+//        minSdk 26
+//        targetSdk 36
+//        versionCode 42
+//        versionName "3.0.6"
+//        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+//    }
+
+    defaultConfig {
+        applicationId "com.xira.humanec_eye_app"
+        minSdk 26
+        targetSdk 36
+        versionCode 46
+        versionName "3.0.6"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // 1. Architecture specify karein (64-bit mandatory hai 16KB ke liye)
+        ndk {
+            abiFilters "arm64-v8a", "x86_64"
+        }
+
+        // 2. Agar aap CMake use kar rahe hain toh ye flags zaroori hain
+        externalNativeBuild {
+            cmake {
+                cppFlags "-Wl,-z,max-page-size=16384"
+            }
+        }
+    }
+
+    ndkVersion '30.0.14904198 rc1'
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.debug
+            ndk.debugSymbolLevel = "FULL"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    buildFeatures {
+        viewBinding true
+    }
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+    sourceSets {
+        main {
+            assets.srcDirs = ['src/main/assets']
+        }
+    }
+
+    // Support for 16 KB page size devices (Android 15+)
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = false
+            // AGP 8.5.1+ automatically handles 16 KB alignment
+        }
+    }
+    androidResources {
+        noCompress 'pb', 'tflite'
+    }
+}
+configurations.all {
+    exclude group: 'com.google.ai.edge.litert', module: 'litert-api'
+}
+
+dependencies {
+    implementation 'org.tensorflow:tensorflow-lite-support:0.5.0'
+    implementation libs.androidx.test.ext.junit
+    implementation libs.espresso.core
+    implementation libs.litert.gpu
+    implementation libs.core.ktx
+    // CameraX dependencies
+    implementation libs.lottie
+    implementation (libs.androidx.camera.camera2.v121)
+    implementation (libs.androidx.camera.lifecycle.v141)
+    implementation (libs.androidx.camera.view.v121)
+    implementation libs.shimmer
+    implementation libs.gson
+    implementation libs.converter.gson
+    implementation libs.retrofit
+    implementation libs.logging.interceptor
+    implementation libs.lifecycle.livedata.ktx.v241
+    implementation libs.lifecycle.viewmodel.ktx.v241
+    implementation libs.appcompat
+    implementation libs.material
+    implementation libs.constraintlayout
+    implementation libs.navigation.fragment
+    implementation libs.navigation.ui
+    implementation libs.swiperefreshlayout
+    implementation libs.paging.common.android
+    implementation libs.litert
+    implementation libs.play.services.mlkit.face.detection
+    implementation libs.firebase.crashlytics
+    implementation libs.firebase.database
+    implementation libs.firebase.firestore
+    androidTestImplementation libs.espresso.core
+    implementation libs.face.detection
+    implementation libs.picasso
+    implementation libs.androidx.work.runtime
+    implementation libs.androidx.lifecycle.extensions
+    implementation platform(libs.google.firebase.bom)
+    implementation(libs.google.firebase.crashlytics)
+    implementation(libs.guava)
+}

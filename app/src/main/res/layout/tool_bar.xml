@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.appcompat.widget.Toolbar xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/toolbar"
+    android:layout_width="match_parent"
+    android:layout_height="?attr/actionBarSize"
+    android:background="@color/white"
+    android:elevation="4dp"
+    >
+
+    <ImageView
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:src="@drawable/logo"
+        android:contentDescription="App Logo"
+
+        android:paddingEnd="8dp"
+        android:paddingRight="6dp"
+        android:adjustViewBounds="true"
+        android:scaleType="fitStart" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:text="humanec eye"
+        android:textColor="@color/textColor"
+        android:textSize="24sp"
+        android:gravity="center_vertical"
+        android:paddingStart="8dp"
+        android:textStyle="bold" />
+</androidx.appcompat.widget.Toolbar>

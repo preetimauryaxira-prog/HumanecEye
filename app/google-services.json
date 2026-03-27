@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "371421116671",
+    "firebase_url": "https://humaneclite-default-rtdb.firebaseio.com",
+    "project_id": "humaneclite",
+    "storage_bucket": "humaneclite.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:371421116671:android:2a332e028cd5cdeaa674ca",
+        "android_client_info": {
+          "package_name": "com.xira.humanec_eye_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBVXIPRNNj59EVNhCjLIR9QuZTkdnFAwYo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:371421116671:android:d22ea3779dd3a73ba674ca",
+        "android_client_info": {
+          "package_name": "com.xira.humaneclite_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBVXIPRNNj59EVNhCjLIR9QuZTkdnFAwYo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
