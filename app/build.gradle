@@ -27,12 +27,10 @@ android {
         versionName "3.0.6"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        // 1. Architecture specify karein (64-bit mandatory hai 16KB ke liye)
         ndk {
             abiFilters "arm64-v8a", "x86_64"
         }
 
-        // 2. Agar aap CMake use kar rahe hain toh ye flags zaroori hain
         externalNativeBuild {
             cmake {
                 cppFlags "-Wl,-z,max-page-size=16384"

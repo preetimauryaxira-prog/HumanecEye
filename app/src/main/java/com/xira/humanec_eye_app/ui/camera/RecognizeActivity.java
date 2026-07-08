@@ -217,7 +217,9 @@ public class RecognizeActivity extends AppCompatActivity {
                         dialog.dismiss();
                         isSyncing = false;
                         if(!isBtn){
-                            navigateToPin();}
+                            navigateToPin();
+
+                        }
                         checkUnsyncedData();
 
                     });

@@ -1,6 +1,7 @@
 package com.xira.humanec_eye_app.ui.camera.autoSync;
 
 import android.content.Context;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -16,7 +17,6 @@ import com.google.firebase.firestore.QueryDocumentSnapshot;
 import com.xira.humanec_eye_app.api.ApiRepository;
 import com.xira.humanec_eye_app.model.Attendance;
 import com.xira.humanec_eye_app.utils.NetworkUtils;
-import com.google.firebase.firestore.FirebaseFirestore;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -37,6 +37,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AttendanceService {
@@ -48,8 +50,12 @@ public class AttendanceService {
     private long lastPunchTime = 0;
     private static final long COOLDOWN = 5000; // 5 sec
 
+    // Background executor to prevent File I/O from blocking the main thread
+    private static final ExecutorService logExecutor = Executors.newSingleThreadExecutor();
+
     public AttendanceService(Context context) {
         this.context = context;
+        writeAppLog("DEBUG", "AttendanceService initialized.", null);
     }
 
     // Static to share across all AttendanceService instances - prevents duplicates
@@ -61,49 +67,81 @@ public class AttendanceService {
     String organizationId = "";
     String organizationName = "";
 
-    public void addAttendance(String empCode, String empName, String orgId, String orgName,long timestamp) {
-        Log.d(TAG, "Skipping duplicate: Record already in pending syncs - ");
+    /**
+     * Custom Logger: Writes to Logcat AND an external text file in the Downloads directory.
+     */
+    private static void writeAppLog(String level, String msg, Throwable t) {
+        // 1. Standard Logcat
+        String fullMsg = msg + (t != null ? " | Exception: " + t.getMessage() : "");
+        if (level.equals("ERROR")) Log.e(TAG, fullMsg, t);
+        else if (level.equals("WARN")) Log.w(TAG, fullMsg);
+        else Log.d(TAG, fullMsg);
+
+        // 2. Background File Logging to Downloads Directory
+        logExecutor.execute(() -> {
+            try {
+                File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                if (!downloadsDir.exists()) {
+                    downloadsDir.mkdirs();
+                }
+                File logFile = new File(downloadsDir, "AttendanceAppLogs.txt");
+
+                String timeStamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(new Date());
+                String logEntry = timeStamp + " [" + level + "] " + TAG + ": " + fullMsg + "\n";
+
+                FileWriter writer = new FileWriter(logFile, true);
+                writer.append(logEntry);
+                writer.flush();
+                writer.close();
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to write to log file in Downloads", e);
+            }
+        });
+    }
+
+    public void addAttendance(String empCode, String empName, String orgId, String orgName, long timestamp) {
+        writeAppLog("DEBUG", "Entering addAttendance() for empCode: " + empCode + " at " + timestamp, null);
 
         synchronized (SYNC_LOCK) {
+            writeAppLog("DEBUG", "Acquired SYNC_LOCK in addAttendance()", null);
             String recordKey = empCode + "_" + timestamp;
             organizationId = orgId;
             organizationName = orgName;
+
             if (pendingSyncs.contains(recordKey)) {
-                Log.d(TAG, "Skipping duplicate: Record already in pending syncs - " + recordKey);
+                writeAppLog("WARN", "Skipping duplicate: Record already in pending syncs - " + recordKey, null);
                 return;
             }
 
+            writeAppLog("DEBUG", "Loading current attendance records for duplicate check.", null);
             List<Attendance> records = loadAttendanceRecords();
-          
+
+            writeAppLog("DEBUG", "Checking for exact match duplicates.", null);
             // Check for exact duplicate (same empCode and timestamp) - regardless of sync status
             for (Attendance record : records) {
                 if (record.empCode.equals(empCode) && record.timestamp == timestamp) {
-                    Log.d(TAG, "Skipping duplicate: Exact match found for " + empCode + " at " + timestamp + 
-                            " (synced=" + record.synced + ")");
+                    writeAppLog("WARN", "Skipping duplicate: Exact match found for " + empCode + " at " + timestamp + " (synced=" + record.synced + ")", null);
                     return;
                 }
             }
 
+            writeAppLog("DEBUG", "Checking for 5-minute threshold duplicates.", null);
             // Check if the same employee has an attendance record within the last 5 minutes
-            // This checks BOTH synced and unsynced records to prevent duplicate API calls
             for (Attendance record : records) {
                 if (record.empCode.equals(empCode)) {
                     long timeDifference = Math.abs(timestamp - record.timestamp);
                     if (timeDifference < DUPLICATE_THRESHOLD_MS) {
                         if (record.synced) {
-                            // Already synced record exists within 5 minutes - MUST NOT sync again
-                            Log.d(TAG, "Skipping: Employee " + empCode + " ALREADY SYNCED within 5 minutes. " +
-                                    "Existing sync at " + record.timestamp + ", time diff: " + (timeDifference / 1000) + "s");
+                            writeAppLog("WARN", "Skipping: Employee " + empCode + " ALREADY SYNCED within 5 minutes. Existing sync at " + record.timestamp + ", time diff: " + (timeDifference / 1000) + "s", null);
                         } else {
-                            // Unsynced record exists within 5 minutes
-                            Log.d(TAG, "Skipping: Employee " + empCode + " has unsynced record within 5 minutes. " +
-                                    "Time diff: " + (timeDifference / 1000) + "s");
+                            writeAppLog("WARN", "Skipping: Employee " + empCode + " has unsynced record within 5 minutes. Time diff: " + (timeDifference / 1000) + "s", null);
                         }
                         return;
                     }
                 }
             }
 
+            writeAppLog("DEBUG", "Checking pending syncs for timestamp proximity.", null);
             // Also check pending syncs for timestamp proximity
             for (String pendingKey : pendingSyncs) {
                 if (pendingKey.startsWith(empCode + "_")) {
@@ -111,52 +149,64 @@ public class AttendanceService {
                         long pendingTimestamp = Long.parseLong(pendingKey.substring(empCode.length() + 1));
                         long timeDifference = Math.abs(timestamp - pendingTimestamp);
                         if (timeDifference < DUPLICATE_THRESHOLD_MS) {
-                            Log.d(TAG, "Skipping duplicate: Employee " + empCode + " already in pending sync within 5 minutes");
+                            writeAppLog("WARN", "Skipping duplicate: Employee " + empCode + " already in pending sync within 5 minutes", null);
                             return;
                         }
                     } catch (NumberFormatException e) {
-                        Log.e(TAG, "Error parsing pending sync timestamp", e);
+                        writeAppLog("ERROR", "Error parsing pending sync timestamp", e);
                     }
                 }
             }
 
+            writeAppLog("DEBUG", "Validation passed. Adding new record to list.", null);
             records.add(new Attendance(empCode, empName, timestamp, false));
             pendingSyncs.add(recordKey);
+
+            writeAppLog("DEBUG", "Saving updated attendance records to disk.", null);
             saveAttendanceRecords(records);
-            Log.d(TAG, "Added new attendance record for " + empCode + " at " + timestamp);
+            writeAppLog("DEBUG", "Added new attendance record for " + empCode + " at " + timestamp, null);
         }
 
+        writeAppLog("DEBUG", "Checking network connectivity for sync.", null);
         if (NetworkUtils.isNetworkConnected(context)) {
+            writeAppLog("DEBUG", "Network is connected. Triggering syncAttendance.", null);
             new Handler(Looper.getMainLooper()).post(() -> {
-                syncAttendance(() -> {}, () -> {});
+                syncAttendance(() -> writeAppLog("DEBUG", "Auto-sync onSuccess triggered.", null),
+                        () -> writeAppLog("WARN", "Auto-sync onFailure triggered.", null));
             });
+        } else {
+            writeAppLog("WARN", "No network connection. Sync deferred.", null);
         }
     }
 
     public void syncAttendance(Runnable onSuccess, Runnable onFailure) {
+        writeAppLog("DEBUG", "Entering syncAttendance().", null);
         List<Attendance> unsyncedRecords = getUnsyncedAttendance();
+
         if (unsyncedRecords.isEmpty()) {
-            Log.d(TAG, "No unsynced attendance records to sync");
+            writeAppLog("DEBUG", "No unsynced attendance records to sync. Aborting sync.", null);
             onSuccess.run();
             return;
         }
 
         int batchSize = Math.min(5, unsyncedRecords.size());
+        writeAppLog("DEBUG", "Total unsynced records: " + unsyncedRecords.size() + ". Batch size set to: " + batchSize, null);
 
         if (isSyncing.getAndSet(true)) {
-            Log.w(TAG, "Sync already in progress, skipping");
+            writeAppLog("WARN", "Sync already in progress, skipping.", null);
             onFailure.run();
             return;
         }
 
         try {
-//            List<Attendance> recordsToSync = new ArrayList<>(unsyncedRecords);
+            writeAppLog("DEBUG", "Preparing batch for sync.", null);
             List<Attendance> recordsToSync = new ArrayList<>(unsyncedRecords.subList(0, batchSize));
 
             SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
             List<Map<String, Object>> attendanceList = new ArrayList<>();
 
             for (Attendance record : recordsToSync) {
+                writeAppLog("DEBUG", "Mapping record for sync: " + record.empCode + " at " + record.timestamp, null);
                 Map<String, Object> attendanceMap = new HashMap<>();
                 attendanceMap.put("code", record.empCode);
                 attendanceMap.put("loG_DATETIME", dateFormat.format(new Date(record.timestamp)));
@@ -164,45 +214,49 @@ public class AttendanceService {
                 pendingSyncs.add(record.empCode + "_" + record.timestamp);
             }
 
-            Log.d(TAG, "Starting sync for " + attendanceList.size() + " unSynced attendance records");
+            writeAppLog("DEBUG", "Starting API sync request for " + attendanceList.size() + " records.", null);
 
             new Handler(Looper.getMainLooper()).post(() -> {
+                writeAppLog("DEBUG", "Calling ApiRepository bulkAttendanceMark.", null);
                 LiveData<Boolean> syncLiveData = ApiRepository.getInstance(context).bulkAttendanceMark(attendanceList, context);
+
                 Observer<Boolean> observer = new Observer<Boolean>() {
                     @Override
                     public void onChanged(Boolean success) {
+                        writeAppLog("DEBUG", "Received API Response. Success: " + success, null);
                         syncLiveData.removeObserver(this);
                         isSyncing.set(false);
 
-                        if (Boolean.TRUE.equals(success))  {
-                            Log.d(TAG, "Attendance synced successfully, updating records");
+                        if (Boolean.TRUE.equals(success)) {
+                            writeAppLog("DEBUG", "Attendance synced successfully, updating local records.", null);
                             List<Attendance> allRecords = loadAttendanceRecords();
 
-                            // Update synced status and remove from pending
+                            writeAppLog("DEBUG", "Iterating allRecords to mark synced and remove from pending.", null);
                             for (Attendance record : allRecords) {
                                 if (recordsToSync.stream().anyMatch(r ->
                                         r.empCode.equals(record.empCode) && r.timestamp == record.timestamp)) {
+                                    writeAppLog("DEBUG", "Marking record as synced: " + record.empCode, null);
                                     record.synced = true;
                                     punchIn(record.empName, record.empCode);
                                     pendingSyncs.remove(record.empCode + "_" + record.timestamp);
                                 }
                             }
+
+                            writeAppLog("DEBUG", "Saving synchronized records to disk.", null);
                             saveAttendanceRecords(allRecords);
                             onSuccess.run();
+
                             if (!getUnsyncedAttendance().isEmpty()) {
+                                writeAppLog("DEBUG", "More unsynced records found. Triggering recursive syncAttendance.", null);
                                 syncAttendance(() -> {}, () -> {});
                             }
                         } else {
-
-
-                            Log.d(TAG, "Failed to sync attendance, retaining unsynced records");
-                            // Clean up pending syncs for failed records
+                            writeAppLog("ERROR", "Failed to sync attendance, retaining unsynced records.", null);
                             for (Attendance record : recordsToSync) {
                                 pendingSyncs.remove(record.empCode + "_" + record.timestamp);
+                                writeAppLog("DEBUG", "Removed from pendingSyncs due to failure: " + record.empCode, null);
                             }
-
                             onFailure.run();
-
                         }
                     }
                 };
@@ -210,250 +264,149 @@ public class AttendanceService {
             });
         } catch (Exception e) {
             isSyncing.set(false);
-            Log.e(TAG, "Error during sync preparation", e);
+            writeAppLog("ERROR", "Error during sync preparation", e);
             onFailure.run();
-
         }
     }
 
     public void punchIn(String employeeName, String employeeId) {
-
+        writeAppLog("DEBUG", "Entering punchIn() for: " + employeeId + " (" + employeeName + ")", null);
         FirebaseFirestore db = FirebaseFirestore.getInstance();
 
+        writeAppLog("DEBUG", "Querying Firestore for last punch status.", null);
         db.collection("punch_logs")
                 .whereEqualTo("user_id", employeeId)
                 .orderBy("time", Query.Direction.DESCENDING)
                 .limit(1)
                 .get()
                 .addOnSuccessListener(queryDocumentSnapshots -> {
-
+                    writeAppLog("DEBUG", "Firestore query successful.", null);
                     String type = "punch_in"; // default
 
                     if (queryDocumentSnapshots != null && !queryDocumentSnapshots.isEmpty()) {
-
                         DocumentSnapshot doc = queryDocumentSnapshots.getDocuments().get(0);
-
                         String lastType = doc.getString("type");
+                        writeAppLog("DEBUG", "Last punch type found: " + lastType, null);
 
                         if ("punch_in".equalsIgnoreCase(lastType)) {
                             type = "punch_out";
                         } else if ("punch_out".equalsIgnoreCase(lastType)) {
                             type = "punch_in";
                         }
+                    } else {
+                        writeAppLog("DEBUG", "No previous punch logs found. Defaulting to punch_in.", null);
                     }
 
-                    // ✅ Final save call
-                    savePunch(type,employeeName, employeeId);
-
+                    writeAppLog("DEBUG", "Determined next punch type: " + type + ". Saving punch.", null);
+                    savePunch(type, employeeName, employeeId);
                 })
                 .addOnFailureListener(e -> {
-                    Log.e("PUNCH", "Fetch failed: ", e);
-
-                    // optional fallback
-                    savePunch("punch_in", employeeName,employeeId);
+                    writeAppLog("ERROR", "Firestore fetch failed. Falling back to default punch_in.", e);
+                    savePunch("punch_in", employeeName, employeeId);
                 });
     }
 
-
     private void savePunch(String type, String employeeName, String employeeId) {
-
+        writeAppLog("DEBUG", "Entering savePunch() for " + employeeId + " with type: " + type, null);
         long now = System.currentTimeMillis();
 
-        // ✅ Cooldown check (duplicate रोकने के लिए)
         if ((now - lastPunchTime) < COOLDOWN) {
-            Log.d("PUNCH", "Duplicate punch ignored");
+            writeAppLog("WARN", "Duplicate punch ignored due to COOLDOWN limit.", null);
             return;
         }
         lastPunchTime = now;
 
         FirebaseFirestore db = FirebaseFirestore.getInstance();
-
         Map<String, Object> data = new HashMap<>();
         data.put("user_name", employeeName);
         data.put("user_id", employeeId);
         data.put("organization_id", organizationId);
         data.put("organization_name", organizationName);
         data.put("type", type);
-
-        // ✅ Firebase server time (for sorting)
         data.put("time", com.google.firebase.firestore.FieldValue.serverTimestamp());
-
-        // ✅ Readable time (for UI)
         data.put("readable_time", getFormattedTime());
 
+        writeAppLog("DEBUG", "Pushing punch data to Firestore collection 'punch_logs'.", null);
         db.collection("punch_logs")
                 .add(data)
-                .addOnSuccessListener(doc ->
-                        Log.d("PUNCH", "Saved: " + type)
-                )
-                .addOnFailureListener(e ->
-                        Log.e("PUNCH", "Error: ", e)
-                );
+                .addOnSuccessListener(doc -> writeAppLog("DEBUG", "Successfully saved punch type to Firestore: " + type, null))
+                .addOnFailureListener(e -> writeAppLog("ERROR", "Error saving punch to Firestore.", e));
     }
+
     private String getFormattedTime() {
+        writeAppLog("DEBUG", "Formatting current time.", null);
         ZonedDateTime now = ZonedDateTime.now(ZoneId.of("Asia/Kolkata"));
-
-        DateTimeFormatter formatter =
-                DateTimeFormatter.ofPattern("MMMM d, yyyy 'at' hh:mm:ss a");
-
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM d, yyyy 'at' hh:mm:ss a");
         String dateTime = now.format(formatter);
-
         int offsetSeconds = now.getOffset().getTotalSeconds();
         int hours = offsetSeconds / 3600;
         int minutes = Math.abs((offsetSeconds % 3600) / 60);
-
         String offset = String.format("UTC%+d:%02d", hours, minutes);
-
+        writeAppLog("DEBUG", "Formatted time result: " + dateTime + " " + offset, null);
         return dateTime + " " + offset;
     }
 
-
-//    public List<Attendance> getUnsyncedAttendance() {
-//        synchronized (SYNC_LOCK) {
-//            List<Attendance> records = loadAttendanceRecordsInternal();
-//            List<Attendance> unsyncedRecords = new ArrayList<>();
-//
-//            // First, collect all synced records per employee for duplicate checking
-//            Map<String, List<Long>> syncedTimestampsPerEmployee = new HashMap<>();
-//            for (Attendance record : records) {
-//                if (record.synced) {
-//                    String empCode = record.empCode;
-//                    if (!syncedTimestampsPerEmployee.containsKey(empCode)) {
-//                        syncedTimestampsPerEmployee.put(empCode, new ArrayList<>());
-//                    }
-//                    syncedTimestampsPerEmployee.get(empCode).add(record.timestamp);
-//                }
-//            }
-//
-//            // Map to track the earliest unsynced attendance per employee to avoid duplicates within 5 minutes
-//            Map<String, Attendance> earliestPerEmployee = new HashMap<>();
-//            List<Attendance> recordsToMarkAsSynced = new ArrayList<>();
-//
-//            for (Attendance record : records) {
-//                if (!record.synced) {
-//                    String empCode = record.empCode;
-//
-//                    // First, check if this unsynced record is within 5 minutes of ANY SYNCED record
-//                    // If so, it's a duplicate and should NOT be synced again
-//                    boolean isDuplicateOfSynced = false;
-//                    if (syncedTimestampsPerEmployee.containsKey(empCode)) {
-//                        for (Long syncedTimestamp : syncedTimestampsPerEmployee.get(empCode)) {
-//                            long timeDifference = Math.abs(record.timestamp - syncedTimestamp);
-//                            if (timeDifference < DUPLICATE_THRESHOLD_MS) {
-//                                Log.d(TAG, "Filtering unsynced record for " + empCode +
-//                                      " - already has SYNCED record within 5 minutes. Time diff: " + (timeDifference / 1000) + "s");
-//                                isDuplicateOfSynced = true;
-//                                recordsToMarkAsSynced.add(record); // Mark as synced to prevent future attempts
-//                                break;
-//                            }
-//                        }
-//                    }
-//
-//                    if (isDuplicateOfSynced) {
-//                        continue;
-//                    }
-//
-//                    // Check if we already have an unsynced record for this employee
-//                    if (earliestPerEmployee.containsKey(empCode)) {
-//                        Attendance existing = earliestPerEmployee.get(empCode);
-//                        long timeDifference = Math.abs(record.timestamp - existing.timestamp);
-//
-//                        // If within 5 minutes, keep only the earlier one (first punch)
-//                        if (timeDifference < DUPLICATE_THRESHOLD_MS) {
-//                            // Keep the earlier record, skip this one
-//                            if (record.timestamp < existing.timestamp) {
-//                                recordsToMarkAsSynced.add(existing);
-//                                earliestPerEmployee.put(empCode, record);
-//                            } else {
-//                                recordsToMarkAsSynced.add(record);
-//                            }
-//                            Log.d(TAG, "Filtering duplicate unsynced record for " + empCode +
-//                                  " within 5 minutes - keeping earliest punch only");
-//                            continue;
-//                        }
-//                    }
-//                    earliestPerEmployee.put(empCode, record);
-//                }
-//            }
-//
-//            // Mark duplicate records as synced to prevent future attempts
-//            if (!recordsToMarkAsSynced.isEmpty()) {
-//                for (Attendance record : recordsToMarkAsSynced) {
-//                    record.synced = true;
-//                }
-//                saveAttendanceRecordsInternal(records);
-//                Log.d(TAG, "Marked " + recordsToMarkAsSynced.size() + " duplicate records as synced");
-//            }
-//
-//            unsyncedRecords.addAll(earliestPerEmployee.values());
-//            Log.d(TAG, "Found " + unsyncedRecords.size() + " unique unsynced records after filtering all duplicates");
-//            return unsyncedRecords;
-//        }
-//    }
-
     public List<Attendance> getUnsyncedAttendance() {
+        writeAppLog("DEBUG", "Entering getUnsyncedAttendance().", null);
         synchronized (SYNC_LOCK) {
-
+                writeAppLog("DEBUG", "Acquired SYNC_LOCK in getUnsyncedAttendance(). Loading internal records.", null);
             List<Attendance> allRecords = loadAttendanceRecordsInternal();
             List<Attendance> result = new ArrayList<>();
 
-            if (allRecords.isEmpty()) return result;
+            if (allRecords.isEmpty()) {
+                writeAppLog("DEBUG", "No records found internally. Returning empty list.", null);
+                return result;
+            }
 
-            // Map: empCode → list of synced timestamps
+            writeAppLog("DEBUG", "Processing " + allRecords.size() + " total records for unsynced filtration.", null);
             Map<String, List<Long>> syncedMap = new HashMap<>();
 
-            // Step 1: Collect synced timestamps per employee
             for (Attendance record : allRecords) {
                 if (record.synced) {
-                    syncedMap
-                            .computeIfAbsent(record.empCode, k -> new ArrayList<>())
-                            .add(record.timestamp);
+                    syncedMap.computeIfAbsent(record.empCode, k -> new ArrayList<>()).add(record.timestamp);
                 }
             }
 
-            // Map: empCode → earliest unsynced attendance
             Map<String, Attendance> earliestUnsynced = new HashMap<>();
-
             List<Attendance> duplicatesToMarkSynced = new ArrayList<>();
 
-            // Step 2: Process unsynced records
             for (Attendance record : allRecords) {
-
                 if (record.synced) continue;
 
                 String empCode = record.empCode;
+                writeAppLog("DEBUG", "Evaluating unsynced record for: " + empCode, null);
 
-                // 🔹 Check duplicate against already synced records
                 if (isDuplicateOfSynced(record, syncedMap.get(empCode))) {
+                    writeAppLog("DEBUG", "Record determined as duplicate of already synced record.", null);
                     duplicatesToMarkSynced.add(record);
                     continue;
                 }
 
-                // 🔹 Check duplicate among unsynced records (5 min rule)
                 Attendance existing = earliestUnsynced.get(empCode);
-
                 if (existing == null) {
+                    writeAppLog("DEBUG", "Adding to earliestUnsynced map.", null);
                     earliestUnsynced.put(empCode, record);
                 } else {
                     long diff = Math.abs(record.timestamp - existing.timestamp);
-
                     if (diff < DUPLICATE_THRESHOLD_MS) {
-                        // Keep earlier record only
+                        writeAppLog("DEBUG", "Threshold breach detected within unsynced records.", null);
                         if (record.timestamp < existing.timestamp) {
+                            writeAppLog("DEBUG", "Keeping earlier record.", null);
                             duplicatesToMarkSynced.add(existing);
                             earliestUnsynced.put(empCode, record);
                         } else {
+                            writeAppLog("DEBUG", "Marking newer duplicate as synced.", null);
                             duplicatesToMarkSynced.add(record);
                         }
                     } else {
-                        // If outside threshold → treat separately
+                        writeAppLog("DEBUG", "Outside threshold. Handling separately.", null);
                         earliestUnsynced.put(empCode, record);
                     }
                 }
             }
 
-            // Step 3: Mark duplicates as synced
             if (!duplicatesToMarkSynced.isEmpty()) {
+                writeAppLog("DEBUG", "Marking " + duplicatesToMarkSynced.size() + " duplicates as synced internally.", null);
                 for (Attendance record : duplicatesToMarkSynced) {
                     record.synced = true;
                 }
@@ -461,15 +414,13 @@ public class AttendanceService {
             }
 
             result.addAll(earliestUnsynced.values());
+            writeAppLog("DEBUG", "Returning " + result.size() + " unique unsynced records.", null);
             return result;
         }
     }
 
-
     private boolean isDuplicateOfSynced(Attendance record, List<Long> syncedTimestamps) {
-
         if (syncedTimestamps == null) return false;
-
         for (Long syncedTime : syncedTimestamps) {
             long diff = Math.abs(record.timestamp - syncedTime);
             if (diff < DUPLICATE_THRESHOLD_MS) {
@@ -479,15 +430,16 @@ public class AttendanceService {
         return false;
     }
 
-
     private void saveAttendanceRecords(List<Attendance> records) {
+        writeAppLog("DEBUG", "Entering saveAttendanceRecords() wrapper.", null);
         synchronized (SYNC_LOCK) {
+            writeAppLog("DEBUG", "Acquired SYNC_LOCK. Delegating to saveAttendanceRecordsInternal.", null);
             saveAttendanceRecordsInternal(records);
         }
     }
 
-    // Internal method without synchronization - must be called from synchronized block
     private void saveAttendanceRecordsInternal(List<Attendance> records) {
+        writeAppLog("DEBUG", "Entering saveAttendanceRecordsInternal() with " + records.size() + " records.", null);
         try {
             JSONArray jsonArray = new JSONArray();
             for (Attendance record : records) {
@@ -497,96 +449,78 @@ public class AttendanceService {
                 jsonObject.put("timestamp", record.timestamp);
                 jsonObject.put("synced", record.synced);
                 jsonArray.put(jsonObject);
-
-
             }
 
             File file = new File(context.getFilesDir(), ATTENDANCE_FILE);
             File tempFile = new File(context.getFilesDir(), ATTENDANCE_FILE + ".tmp");
             File backupFile = new File(context.getFilesDir(), ATTENDANCE_FILE + ".bak");
 
+            writeAppLog("DEBUG", "Writing json payload to temporary file.", null);
             try (FileWriter writer = new FileWriter(tempFile)) {
                 writer.write(jsonArray.toString());
                 writer.flush();
             }
 
-            // Create backup of existing file before replacing
             if (file.exists()) {
-                if (backupFile.exists()) {
-                    backupFile.delete();
-                }
+                writeAppLog("DEBUG", "Main file exists. Managing backup.", null);
+                if (backupFile.exists()) backupFile.delete();
                 if (!file.renameTo(backupFile)) {
-                    Log.w(TAG, "Failed to create backup, attempting direct write");
+                    writeAppLog("WARN", "Failed to create backup, attempting direct write.", null);
                 }
             }
 
-            // On Windows/Android, renameTo fails if destination exists - delete first
             if (file.exists() && !file.delete()) {
-                Log.e(TAG, "Failed to delete existing file for atomic save");
-                // Try to restore from backup
-                if (backupFile.exists()) {
-                    backupFile.renameTo(file);
-                }
+                writeAppLog("ERROR", "Failed to delete existing file for atomic save.", null);
+                if (backupFile.exists()) backupFile.renameTo(file);
                 return;
             }
 
             if (!tempFile.renameTo(file)) {
-                Log.e(TAG, "Failed to rename temp file");
-                // Restore from backup if available
-                if (backupFile.exists()) {
-                    backupFile.renameTo(file);
-                }
+                writeAppLog("ERROR", "Failed to rename temp file to primary file.", null);
+                if (backupFile.exists()) backupFile.renameTo(file);
                 return;
             }
 
-            // Clean up backup file on success
             if (backupFile.exists()) {
+                writeAppLog("DEBUG", "Cleaning up backup file.", null);
                 backupFile.delete();
             }
 
-            Log.d("SAVE", "start");
-            Log.d("SAVE", jsonArray.toString());
-            Log.d("SAVE", "end");
-
-
-            Log.d(TAG, "Saved " + records.size() + " records");
+            writeAppLog("DEBUG", "SAVE operation completed successfully for " + records.size() + " records.", null);
         } catch (Exception e) {
-            Log.e(TAG, "Error saving attendance records", e);
+            writeAppLog("ERROR", "Exception thrown in saveAttendanceRecordsInternal", e);
         }
     }
 
     private List<Attendance> loadAttendanceRecords() {
+        writeAppLog("DEBUG", "Entering loadAttendanceRecords() wrapper.", null);
         synchronized (SYNC_LOCK) {
+            writeAppLog("DEBUG", "Acquired SYNC_LOCK. Delegating to loadAttendanceRecordsInternal.", null);
             return loadAttendanceRecordsInternal();
         }
     }
 
-    // Internal method without synchronization - must be called from synchronized block
     private List<Attendance> loadAttendanceRecordsInternal() {
+        writeAppLog("DEBUG", "Entering loadAttendanceRecordsInternal().", null);
         List<Attendance> records = new ArrayList<>();
         try {
             File file = new File(context.getFilesDir(), ATTENDANCE_FILE);
             File tempFile = new File(context.getFilesDir(), ATTENDANCE_FILE + ".tmp");
             File backupFile = new File(context.getFilesDir(), ATTENDANCE_FILE + ".bak");
 
-            // Recovery priority: main file > backup file > temp file
+            writeAppLog("DEBUG", "Evaluating file existence and backup recovery states.", null);
             if (!file.exists()) {
                 if (backupFile.exists()) {
-                    if (backupFile.renameTo(file)) {
-                        Log.d(TAG, "Recovered from backup file");
-                    } else {
-                        Log.w(TAG, "Failed to recover from backup file");
-                    }
+                    if (backupFile.renameTo(file)) writeAppLog("DEBUG", "Recovered from backup file.", null);
+                    else writeAppLog("WARN", "Failed to recover from backup file.", null);
                 } else if (tempFile.exists()) {
-                    if (tempFile.renameTo(file)) {
-                        Log.d(TAG, "Recovered from temp file");
-                    } else {
-                        Log.w(TAG, "Failed to recover from temp file");
-                    }
+                    if (tempFile.renameTo(file)) writeAppLog("DEBUG", "Recovered from temp file.", null);
+                    else writeAppLog("WARN", "Failed to recover from temp file.", null);
                 }
             }
 
             if (file.exists()) {
+                writeAppLog("DEBUG", "Reading primary file contents.", null);
                 StringBuilder jsonString = new StringBuilder();
                 try (FileReader reader = new FileReader(file)) {
                     int character;
@@ -597,8 +531,7 @@ public class AttendanceService {
 
                 String content = jsonString.toString().trim();
                 if (content.isEmpty() || !content.startsWith("[")) {
-                    Log.e(TAG, "Invalid JSON content, attempting backup recovery");
-                    // Try backup file
+                    writeAppLog("ERROR", "Invalid JSON content detected. Attempting backup read.", null);
                     if (backupFile.exists()) {
                         StringBuilder backupJson = new StringBuilder();
                         try (FileReader reader = new FileReader(backupFile)) {
@@ -612,6 +545,7 @@ public class AttendanceService {
                 }
 
                 if (!content.isEmpty() && content.startsWith("[")) {
+                    writeAppLog("DEBUG", "Parsing JSON payload.", null);
                     JSONArray jsonArray = new JSONArray(content);
                     for (int i = 0; i < jsonArray.length(); i++) {
                         JSONObject jsonObject = jsonArray.getJSONObject(i);
@@ -622,35 +556,40 @@ public class AttendanceService {
                                 jsonObject.optBoolean("synced")
                         ));
                     }
-                    Log.d(TAG, "Loaded " + records.size() + " records from " + file.getAbsolutePath());
+                    writeAppLog("DEBUG", "Loaded " + records.size() + " records successfully.", null);
+
                     for (Attendance record : records) {
                         if (record.synced) {
                             pendingSyncs.remove(record.empCode + "_" + record.timestamp);
                         }
                     }
                 }
+            } else {
+                writeAppLog("DEBUG", "No attendance file exists yet.", null);
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error loading attendance records", e);
+            writeAppLog("ERROR", "Exception thrown in loadAttendanceRecordsInternal.", e);
         }
         return records;
     }
 
-    public  JSONArray getAllAttendanceData() {
-        JSONArray jsonArray=new JSONArray();
+    public JSONArray getAllAttendanceData() {
+        writeAppLog("DEBUG", "Entering getAllAttendanceData().", null);
+        JSONArray jsonArray = new JSONArray();
 
         try {
             File file = new File(context.getFilesDir(), ATTENDANCE_FILE);
             File tempFile = new File(context.getFilesDir(), ATTENDANCE_FILE + ".tmp");
 
-            // If temp file exists but main file doesn't, recover from temp
             if (!file.exists() && tempFile.exists()) {
+                writeAppLog("WARN", "Main file missing. Attempting rename of temp file.", null);
                 if (!tempFile.renameTo(file)) {
-                    Log.w(TAG, "Failed to recover from temp file");
+                    writeAppLog("WARN", "Failed to recover from temp file.", null);
                 }
             }
 
             if (file.exists()) {
+                writeAppLog("DEBUG", "Reading data for raw JSON extraction.", null);
                 StringBuilder jsonString = new StringBuilder();
                 try (FileReader reader = new FileReader(file)) {
                     int character;
@@ -658,257 +597,64 @@ public class AttendanceService {
                         jsonString.append((char) character);
                     }
                 }
-
-               jsonArray  = new JSONArray(jsonString.toString());
-
+                jsonArray = new JSONArray(jsonString.toString());
+                writeAppLog("DEBUG", "Successfully extracted JSONArray block.", null);
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error loading attendance records", e);
+            writeAppLog("ERROR", "Error extracting raw attendance records JSON", e);
         }
         return jsonArray;
     }
 
-
-//    public void syncAttendance(Runnable onSuccess, Runnable onFailure) {
-//
-//        if (isSyncing.get()) {
-//            Log.w(TAG, "Sync already running");
-//            return;
-//        }
-//
-//        List<Attendance> unsyncedRecords = getUnsyncedAttendance();
-//
-//        if (unsyncedRecords.isEmpty()) {
-//            onSuccess.run();
-//            return;
-//        }
-//
-//        isSyncing.set(true);
-//
-//        int batchSize = Math.min(5, unsyncedRecords.size());
-//        List<Attendance> recordsToSync =
-//                new ArrayList<>(unsyncedRecords.subList(0, batchSize));
-//
-//        SimpleDateFormat dateFormat =
-//                new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
-//
-//        List<Map<String, Object>> attendanceList = new ArrayList<>();
-//
-//        for (Attendance record : recordsToSync) {
-//
-//            Map<String, Object> map = new HashMap<>();
-//            map.put("code", record.empCode);
-//            map.put("loG_DATETIME",
-//                    dateFormat.format(new Date(record.timestamp)));
-//
-//            attendanceList.add(map);
-//        }
-//
-//        LiveData<Boolean> liveData =
-//                ApiRepository.getInstance(context)
-//                        .bulkAttendanceMark(attendanceList, context);
-//
-//        Observer<Boolean> observer = new Observer<Boolean>() {
-//            @Override
-//            public void onChanged(Boolean success) {
-//
-//                liveData.removeObserver(this);
-//                isSyncing.set(false);
-//
-//                if (Boolean.TRUE.equals(success)) {
-//
-//                    // Use cached markAsSynced instead of reload
-//                    markAsSynced(recordsToSync);
-//
-//                    onSuccess.run();
-//
-//                } else {
-//
-//                    onFailure.run();
-//                }
-//            }
-//        };
-//
-//        liveData.observeForever(observer);
-//    }
-
-    // =============================
-    // Load Data Once
-    // =============================
     private void ensureDataLoaded() {
+        writeAppLog("DEBUG", "Entering ensureDataLoaded().", null);
         synchronized (SYNC_LOCK) {
             if (!isDataLoaded) {
+                writeAppLog("DEBUG", "Data not loaded. Initializing Cache.", null);
                 attendanceCache.clear();
                 attendanceCache.addAll(loadAttendanceRecordsInternal());
                 isDataLoaded = true;
+            } else {
+                writeAppLog("DEBUG", "Data is already loaded.", null);
             }
         }
     }
 
-    // =============================
-    // Save Attendance (Offline Safe)
-    // =============================
     public void saveAttendance(Attendance attendance) {
+        writeAppLog("DEBUG", "Entering saveAttendance() wrapper for object payload.", null);
         synchronized (SYNC_LOCK) {
-
             ensureDataLoaded();
-
             attendance.synced = false;
-
             attendanceCache.add(attendance);
-
+            writeAppLog("DEBUG", "Object injected into cache. Saving internal array.", null);
             saveAttendanceRecordsInternal(attendanceCache);
         }
     }
 
-    // =============================
-    // Lightweight Check (Handler use)
-    // =============================
     public boolean hasUnsyncedData() {
+        writeAppLog("DEBUG", "Evaluating hasUnsyncedData().", null);
         synchronized (SYNC_LOCK) {
             ensureDataLoaded();
             for (Attendance record : attendanceCache) {
                 if (!record.synced) {
+                    writeAppLog("DEBUG", "Found unsynced data state: TRUE.", null);
                     return true;
                 }
             }
+            writeAppLog("DEBUG", "No unsynced data state: FALSE.", null);
             return false;
         }
     }
 
-    // =============================
-    // Get Unsynced Records (Filtered)
-    // =============================
-//    public List<Attendance> getUnsyncedAttendance() {
-//
-//        synchronized (SYNC_LOCK) {
-//
-//            ensureDataLoaded();
-//
-//            Map<String, Attendance> earliestPerEmployee = new HashMap<>();
-//
-//            for (Attendance record : attendanceCache) {
-//
-//                if (!record.synced) {
-//
-//                    String empCode = record.empCode;
-//
-//                    if (earliestPerEmployee.containsKey(empCode)) {
-//
-//                        Attendance existing = earliestPerEmployee.get(empCode);
-//                        long diff = Math.abs(record.timestamp - existing.timestamp);
-//
-//                        if (diff < DUPLICATE_THRESHOLD_MS) {
-//
-//                            if (record.timestamp < existing.timestamp) {
-//                                earliestPerEmployee.put(empCode, record);
-//                            }
-//
-//                            continue;
-//                        }
-//                    }
-//
-//                    earliestPerEmployee.put(empCode, record);
-//                }
-//            }
-//
-//            return new ArrayList<>(earliestPerEmployee.values());
-//        }
-//    }
-
-    // =============================
-    // Mark As Synced After SUCCESS
-    // =============================
     public void markAsSynced(List<Attendance> syncedList) {
-
+        writeAppLog("DEBUG", "Entering markAsSynced() for list size: " + syncedList.size(), null);
         synchronized (SYNC_LOCK) {
-
             for (Attendance synced : syncedList) {
+                writeAppLog("DEBUG", "Flagging record as synced in cache.", null);
                 synced.synced = true;
             }
-
+            writeAppLog("DEBUG", "Saving cache to persistent storage.", null);
             saveAttendanceRecordsInternal(attendanceCache);
         }
     }
-
-    // =============================
-    // File Read
-    // =============================
-//    private List<Attendance> loadAttendanceRecordsInternal() {
-//
-//        List<Attendance> records = new ArrayList<>();
-//
-//        try {
-//
-//            File file = new File(context.getFilesDir(), ATTENDANCE_FILE);
-//
-//            if (!file.exists()) return records;
-//
-//            StringBuilder jsonString = new StringBuilder();
-//
-//            try (FileReader reader = new FileReader(file)) {
-//                int character;
-//                while ((character = reader.read()) != -1) {
-//                    jsonString.append((char) character);
-//                }
-//            }
-//
-//            String content = jsonString.toString().trim();
-//
-//            if (!content.isEmpty()) {
-//
-//                JSONArray jsonArray = new JSONArray(content);
-//
-//                for (int i = 0; i < jsonArray.length(); i++) {
-//
-//                    JSONObject obj = jsonArray.getJSONObject(i);
-//
-//                    records.add(new Attendance(
-//                            obj.getString("empCode"),
-//                            obj.getString("empName"),
-//                            obj.getLong("timestamp"),
-//                            obj.optBoolean("synced")
-//                    ));
-//                }
-//            }
-//
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
-//
-//        return records;
-//    }
-
-    // =============================
-    // File Write
-    // =============================
-//    private void saveAttendanceRecordsInternal(List<Attendance> records) {
-//
-//        try {
-//
-//            JSONArray jsonArray = new JSONArray();
-//
-//            for (Attendance record : records) {
-//
-//                JSONObject obj = new JSONObject();
-//                obj.put("empCode", record.empCode);
-//                obj.put("empName", record.empName);
-//                obj.put("timestamp", record.timestamp);
-//                obj.put("synced", record.synced);
-//
-//                jsonArray.put(obj);
-//            }
-//
-//            File file = new File(context.getFilesDir(), ATTENDANCE_FILE);
-//
-//            try (FileWriter writer = new FileWriter(file, false)) {
-//                writer.write(jsonArray.toString());
-//            }
-//
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
-//    }
-
-
 }

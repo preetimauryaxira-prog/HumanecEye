@@ -602,8 +602,8 @@ public class ApiRepository {
             String jsonParams = new Gson().toJson(data);
 
             // 🔥 REQUEST LOG
-//            saveLogToFile(context, "REQUEST:\n" + jsonParams);
-//            copyLogToDownloads(context);
+            saveLogToFile(context, "REQUEST:\n" + jsonParams);
+            copyLogToDownloads(context);
 
             RequestBody requestBody = RequestBody.create(
                     MediaType.parse("application/json"),
@@ -628,10 +628,10 @@ public class ApiRepository {
                                 }
 
                                 // 🔥 RESPONSE LOG
-//                                saveLogToFile(context,
-//                                        "RESPONSE CODE: " + response.code() +
-//                                                "\nRESPONSE BODY:\n" + responseText);
-//                                copyLogToDownloads(context);
+                                saveLogToFile(context,
+                                        "RESPONSE CODE: " + response.code() +
+                                                "\nRESPONSE BODY:\n" + responseText);
+                                copyLogToDownloads(context);
 
                                 if (response.code() == 201) {
                                     result.setValue(true);
@@ -642,8 +642,8 @@ public class ApiRepository {
                                 }
 
                             } catch (Exception e) {
-//                                saveLogToFile(context, "RESPONSE PARSE ERROR: " + e.getMessage());
-//                                copyLogToDownloads(context);
+                                saveLogToFile(context, "RESPONSE PARSE ERROR: " + e.getMessage());
+                                copyLogToDownloads(context);
                                 result.setValue(false);
                             }
                         }
@@ -653,10 +653,10 @@ public class ApiRepository {
                                               @NonNull Throwable t) {
 
                             // 🔥 FAILURE LOG
-//                            saveLogToFile(context,
-//                                    "API FAILURE:\n" + t.getMessage());
-//
-//                            copyLogToDownloads(context);
+                            saveLogToFile(context,
+                                    "API FAILURE:\n" + t.getMessage());
+
+                            copyLogToDownloads(context);
 
                             Log.d("AttendanceService","Error"+t.getMessage());
 
@@ -666,10 +666,10 @@ public class ApiRepository {
 
         } catch (Exception e) {
 
-//            saveLogToFile(context,
-//                    "EXCEPTION OUTSIDE:\n" + e.getMessage());
-//
-//            copyLogToDownloads(context);
+            saveLogToFile(context,
+                    "EXCEPTION OUTSIDE:\n" + e.getMessage());
+
+            copyLogToDownloads(context);
 
             result.setValue(false);
         }
