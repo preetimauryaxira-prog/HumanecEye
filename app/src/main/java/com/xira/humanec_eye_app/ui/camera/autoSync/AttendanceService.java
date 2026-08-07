@@ -208,8 +208,8 @@ public class AttendanceService {
             for (Attendance record : recordsToSync) {
                 writeAppLog("DEBUG", "Mapping record for sync: " + record.empCode + " at " + record.timestamp, null);
                 Map<String, Object> attendanceMap = new HashMap<>();
-                attendanceMap.put("code", record.empCode);
-                attendanceMap.put("loG_DATETIME", dateFormat.format(new Date(record.timestamp)));
+                attendanceMap.put("emp_code", record.empCode);
+                attendanceMap.put("log_timestamp", dateFormat.format(new Date(record.timestamp)));
                 attendanceList.add(attendanceMap);
                 pendingSyncs.add(record.empCode + "_" + record.timestamp);
             }

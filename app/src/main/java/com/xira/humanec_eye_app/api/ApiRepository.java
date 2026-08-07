@@ -119,7 +119,7 @@ public class ApiRepository {
     public MutableLiveData<Boolean> sendWithOTP(String phoneNumber,Context context) {
         MutableLiveData<Boolean> otpResult = new MutableLiveData<>();
 
-        apiService.sendWithOTP(Map.of("username", phoneNumber)).enqueue(new Callback<List<Map<String, Object>>>() {
+        apiService.sendWithOTP(Map.of("mobileNumber", phoneNumber)).enqueue(new Callback<List<Map<String, Object>>>() {
             @Override
             public void onResponse(@NonNull Call<List<Map<String, Object>>> call, @NonNull Response<List<Map<String, Object>>> response) {
                 if (response.isSuccessful() && response.body() != null) {
@@ -452,7 +452,7 @@ public class ApiRepository {
         try {
             // Create parameter map
             Map<String, RequestBody> params = new HashMap<>();
-            params.put("CODE", RequestBody.create(MediaType.parse("text/plain"), empCode));
+            params.put("empCode", RequestBody.create(MediaType.parse("text/plain"), empCode));
             params.put("ATTN_FLAG", RequestBody.create(MediaType.parse("text/plain"), "false"));
 
             // Log request details
@@ -764,7 +764,7 @@ public class ApiRepository {
             Log.d("FILE_PATHS", "File size: " + file1.length() + " bytes");
 
             RequestBody requestFile1 = RequestBody.create(MediaType.parse("image/*"), file1);
-            MultipartBody.Part imagePart1 = MultipartBody.Part.createFormData("IMG_ATTN", file1.getName(), requestFile1);
+            MultipartBody.Part imagePart1 = MultipartBody.Part.createFormData("face_image", file1.getName(), requestFile1);
 
             Map<String, RequestBody> params = new HashMap<>();
             params.put("CODE", RequestBody.create(MediaType.parse("text/plain"), empCode));

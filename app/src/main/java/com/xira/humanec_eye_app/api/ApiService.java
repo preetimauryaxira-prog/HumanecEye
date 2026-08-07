@@ -20,7 +20,7 @@ import retrofit2.http.PartMap;
 
 public interface ApiService {
     @Multipart
-    @PUT("Employee")
+    @PUT("deregister-faceid")
     Call<ResponseBody> deleteEmployee(
             @Header("Authorization") String token,
             @PartMap Map<String, RequestBody> params
@@ -29,18 +29,18 @@ public interface ApiService {
     @POST("/xiraeye/api/Authorization/api/Authorization/UserDetail")
     Call<List<Map<String, Object>>> getUserDetail(@Body Map<String,String> body);
 
-    @GET("Business")
+    @GET("business-list")
     Call<List<Business>> getAllBusiness(@Header("Authorization") String token);
 
-    @POST("Employee/Records")
+    @POST("unregistered-employees")
     Call<List<Employee>> getUnregisterEmployee(@Header("Authorization") String token, @Body Map<String, Object> params);
 
-    @POST("Attendance/EmpRecords")
+    @POST("registered-employees")
     Call<List<Employee>> getRegisteredEmployees(@Header("Authorization") String token, @Body Map<String, Object> params);
 
 
     @Multipart
-    @PUT("Employee")
+    @PUT("register-faceid")
     Call<ResponseBody> registerEmployee(
             @Header("Authorization") String token,
             @PartMap Map<String, RequestBody> params,
@@ -48,19 +48,19 @@ public interface ApiService {
 
     );
 
-    @POST("Attendance")
+    @POST("log-attendance")
     Call<ResponseBody> bulkAttendance(@Header("Authorization")String token,@Body RequestBody params);
-    @POST("Authorization/api/Authorization/SendLoginOTP")
+    @POST("auth/send-otp")
     Call<List<Map<String, Object>>> sendWithOTP(@Body Map<String,String> body);
 
-    @POST("Authorization/api/Authorization/LoginWithOTP")
+    @POST("auth/verify-otp")
     Call<Map<String, Object>> loginWithOTP(@Body Map<String, String> body);
 
-    @POST("Business/SwitchBusiness")
+    @POST("switch-business")
     Call<Map<String, Object>> switchBusiness(
             @Header("Authorization") String token, @Body Map<String, String> body);
 
 
-    @POST("Authorization/api/Authorization/SetPin")
+    @POST("set-pin")
     Call<Boolean> setPin(@Header("Authorization") String token,@Body Map<String, String> body);
 }

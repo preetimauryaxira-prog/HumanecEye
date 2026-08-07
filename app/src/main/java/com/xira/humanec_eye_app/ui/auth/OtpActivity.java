@@ -95,7 +95,7 @@ public class OtpActivity extends AppCompatActivity implements OnOtpFilledListene
         Log.d("OtpActivity", "Getting otp: " + otp);
         if (otp.length() == 4) {
             if(NetworkUtils.isNetworkConnected(this)) {
-                apiRepository.loginWithOTP(Map.of("username", phoneNumber, "password", otp), this)
+                apiRepository.loginWithOTP(Map.of("mobileNumber", phoneNumber, "otp", otp), this)
                         .observe(this, success -> {
                             if (success) {
                                 Intent intent = new Intent(this, OptionActivity.class);
