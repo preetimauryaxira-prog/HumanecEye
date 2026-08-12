@@ -68,33 +68,38 @@ public class AttendanceService {
     String organizationName = "";
 
     /**
-     * Custom Logger: Writes to Logcat AND an external text file in the Downloads directory.
+     * Custom Logger: Writes to Logcat AND an app-specific log file on external storage.
+     * Uses getExternalFilesDir() to satisfy Scoped Storage rules without requiring extra permissions.
      */
-    private static void writeAppLog(String level, String msg, Throwable t) {
+    private void writeAppLog(String level, String msg, Throwable t) {
         // 1. Standard Logcat
         String fullMsg = msg + (t != null ? " | Exception: " + t.getMessage() : "");
         if (level.equals("ERROR")) Log.e(TAG, fullMsg, t);
         else if (level.equals("WARN")) Log.w(TAG, fullMsg);
         else Log.d(TAG, fullMsg);
 
-        // 2. Background File Logging to Downloads Directory
+        // 2. Background File Logging to App-Specific Directory
         logExecutor.execute(() -> {
             try {
-                File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                if (!downloadsDir.exists()) {
+                // Uses Context's external files directory to avoid EACCES Permission Denied on Android 10+
+                File downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                if (downloadsDir != null && !downloadsDir.exists()) {
                     downloadsDir.mkdirs();
                 }
-                File logFile = new File(downloadsDir, "AttendanceAppLogs.txt");
 
-                String timeStamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(new Date());
-                String logEntry = timeStamp + " [" + level + "] " + TAG + ": " + fullMsg + "\n";
+                if (downloadsDir != null) {
+                    File logFile = new File(downloadsDir, "AttendanceAppLogs.txt");
 
-                FileWriter writer = new FileWriter(logFile, true);
-                writer.append(logEntry);
-                writer.flush();
-                writer.close();
+                    String timeStamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(new Date());
+                    String logEntry = timeStamp + " [" + level + "] " + TAG + ": " + fullMsg + "\n";
+
+                    try (FileWriter writer = new FileWriter(logFile, true)) {
+                        writer.append(logEntry);
+                        writer.flush();
+                    }
+                }
             } catch (Exception e) {
-                Log.e(TAG, "Failed to write to log file in Downloads", e);
+                Log.e(TAG, "Failed to write to log file", e);
             }
         });
     }
@@ -237,7 +242,6 @@ public class AttendanceService {
                                         r.empCode.equals(record.empCode) && r.timestamp == record.timestamp)) {
                                     writeAppLog("DEBUG", "Marking record as synced: " + record.empCode, null);
                                     record.synced = true;
-                                    punchIn(record.empName, record.empCode);
                                     pendingSyncs.remove(record.empCode + "_" + record.timestamp);
                                 }
                             }
@@ -349,7 +353,7 @@ public class AttendanceService {
     public List<Attendance> getUnsyncedAttendance() {
         writeAppLog("DEBUG", "Entering getUnsyncedAttendance().", null);
         synchronized (SYNC_LOCK) {
-                writeAppLog("DEBUG", "Acquired SYNC_LOCK in getUnsyncedAttendance(). Loading internal records.", null);
+            writeAppLog("DEBUG", "Acquired SYNC_LOCK in getUnsyncedAttendance(). Loading internal records.", null);
             List<Attendance> allRecords = loadAttendanceRecordsInternal();
             List<Attendance> result = new ArrayList<>();
 

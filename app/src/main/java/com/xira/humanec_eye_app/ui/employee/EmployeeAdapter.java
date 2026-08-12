@@ -150,9 +150,9 @@ public class EmployeeAdapter extends RecyclerView.Adapter<EmployeeAdapter.Employ
 
     private void removeFace(String employeeCode) {
         try {
-           var fileAccess=new FileAccess(context);
+            var fileAccess=new FileAccess(context);
 
-           fileAccess.removeFaceByCode(employeeCode);
+            fileAccess.removeFaceByCode(employeeCode);
         } catch (Exception e) {
             Log.e("Employee Register", "Error removing face data", e);
             ToastUtils.showErrorToast(context, "Failed to remove face");

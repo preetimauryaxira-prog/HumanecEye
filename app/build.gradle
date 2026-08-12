@@ -23,8 +23,8 @@ android {
         applicationId "com.xira.humanec_eye_app"
         minSdk 26
         targetSdk 36
-        versionCode 46
-        versionName "3.0.6"
+        versionCode 49
+        versionName "3.0.7"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
@@ -107,7 +107,6 @@ dependencies {
     implementation libs.paging.common.android
     implementation libs.litert
     implementation libs.play.services.mlkit.face.detection
-    implementation libs.firebase.crashlytics
     implementation libs.firebase.database
     implementation libs.firebase.firestore
     androidTestImplementation libs.espresso.core

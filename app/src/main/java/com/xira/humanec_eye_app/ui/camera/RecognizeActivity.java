@@ -303,13 +303,13 @@ public class RecognizeActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         System.out.println("Closed");
-      AttendanceService service=new AttendanceService(this);
+        AttendanceService service=new AttendanceService(this);
         SharedPreferences sharedPreferences = getSharedPreferences("UserPrefs", Context.MODE_PRIVATE);
         String orgIdString = sharedPreferences.getString("orgID", "0");
         String orgName = sharedPreferences.getString("orgName", "0");
         int orgId = (int) Double.parseDouble(orgIdString);
-        JSONArray data = service.getAllAttendanceData();
 
+        JSONArray data = service.getAllAttendanceData();
         List<Map<String, Object>> dataList = new ArrayList<>();
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
 
@@ -317,12 +317,11 @@ public class RecognizeActivity extends AppCompatActivity {
             try {
                 JSONObject item = data.getJSONObject(i);
                 Map<String, Object> map = new HashMap<>();
-
                 Iterator<String> keys = item.keys();
+
                 while (keys.hasNext()) {
                     String key = keys.next();
                     Object value = item.get(key);
-
                     // Check if the key contains "timestamp" or "time" (case insensitive)
                     if (key.toLowerCase().contains("timestamp") || key.toLowerCase().contains("time")) {
                         try {
@@ -331,28 +330,31 @@ public class RecognizeActivity extends AppCompatActivity {
                                 Date date = new Date((Long) value);
                                 map.put(key, dateFormat.format(date));
                             } else if (value instanceof String) {
-
                                 map.put(key, value); // or parse and reformat if needed
                             }
                         } catch (Exception e) {
-                         
                             map.put(key, value);
                         }
                     } else {
                         map.put(key, value);
                     }
                 }
-
                 dataList.add(map);
             } catch (JSONException e) {
                 e.printStackTrace();
             }
         }
 
+        // SOLUTION: Wrap the List inside a Map so Firestore can serialize it properly as a document
+        Map<String, Object> backupDocument = new HashMap<>();
+        backupDocument.put("attendance_records", dataList);
+
+        // Pass the wrapped Map instead of the raw List
         FirebaseLogger.Companion.getInstance().logData(
                 orgName+" Backup ORG ID: " + orgId,
-                dataList  // Now Firebase can serialize it
+                backupDocument
         );
+
         super.onDestroy();
     }
 }

@@ -118,7 +118,7 @@ public class ApiRepository {
 
     public MutableLiveData<Boolean> sendWithOTP(String phoneNumber,Context context) {
         MutableLiveData<Boolean> otpResult = new MutableLiveData<>();
-
+        //change in "username" key to "mobileNumber"
         apiService.sendWithOTP(Map.of("mobileNumber", phoneNumber)).enqueue(new Callback<List<Map<String, Object>>>() {
             @Override
             public void onResponse(@NonNull Call<List<Map<String, Object>>> call, @NonNull Response<List<Map<String, Object>>> response) {
@@ -174,7 +174,7 @@ public class ApiRepository {
         if(token==null){
             return businessData;
         }
-     
+
 
         apiService.getAllBusiness("Bearer " + token).enqueue(new Callback<List<Business>>() {
             @Override
@@ -226,9 +226,9 @@ public class ApiRepository {
                             boolean isHrHead = (boolean) responseData.get("isHrHead");
 
                             if(!isAdmin){
-                               ToastUtils.showErrorToast(context,"Humanec Eye Login For Owners. You can't Access it.");
-                               loginWithResult.setValue(false);
-                               return;
+                                ToastUtils.showErrorToast(context,"Humanec Eye Login For Owners. You can't Access it.");
+                                loginWithResult.setValue(false);
+                                return;
                             }
 
                             SharedPreferences sharedPreferences = context.getSharedPreferences("UserPrefs", Context.MODE_PRIVATE);
@@ -451,9 +451,12 @@ public class ApiRepository {
         }
         try {
             // Create parameter map
-            Map<String, RequestBody> params = new HashMap<>();
-            params.put("empCode", RequestBody.create(MediaType.parse("text/plain"), empCode));
-            params.put("ATTN_FLAG", RequestBody.create(MediaType.parse("text/plain"), "false"));
+            Map<String, Object> params = new HashMap<>();
+//            params.put("empCode", RequestBody.create(MediaType.parse("text/plain"), empCode));
+//            params.put("ATTN_FLAG", RequestBody.create(MediaType.parse("text/plain"), "false"));
+
+            params.put("empCode", empCode);
+            params.put("ATTN_FLAG",  false);
 
             // Log request details
             Log.d("API_REQUEST", "📤 Sending delete request for employee: " + empCode);
@@ -484,7 +487,7 @@ public class ApiRepository {
                         }
                     } catch (Exception e) {
                         Log.e("API_ERROR", "❌ Error parsing response", e);
-                      result.setValue(false);
+                        result.setValue(false);
                     }
                 }
 
@@ -501,6 +504,8 @@ public class ApiRepository {
 
         return result;
     }
+
+
 //    public MutableLiveData<Boolean> bulkAttendanceMark(List<Map<String,Object>> data, Context context) {
 //        // Initialize with null to represent "loading" state
 //        MutableLiveData<Boolean> result = new MutableLiveData<>();
@@ -547,7 +552,7 @@ public class ApiRepository {
 //                            public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
 //                                System.out.println("Repsonse" +response.body());
 //
-////                    FirebaseLogger.Companion.getInstance().logMessageWithTimestamp("Token--"+token, );
+    ////                    FirebaseLogger.Companion.getInstance().logMessageWithTimestamp("Token--"+token, );
 //                                if(response.code()==201){
 //                                    result.setValue(true);
 //                                }else{
@@ -602,8 +607,8 @@ public class ApiRepository {
             String jsonParams = new Gson().toJson(data);
 
             // 🔥 REQUEST LOG
-            saveLogToFile(context, "REQUEST:\n" + jsonParams);
-            copyLogToDownloads(context);
+//            saveLogToFile(context, "REQUEST:\n" + jsonParams);
+//            copyLogToDownloads(context);
 
             RequestBody requestBody = RequestBody.create(
                     MediaType.parse("application/json"),
@@ -628,22 +633,21 @@ public class ApiRepository {
                                 }
 
                                 // 🔥 RESPONSE LOG
-                                saveLogToFile(context,
-                                        "RESPONSE CODE: " + response.code() +
-                                                "\nRESPONSE BODY:\n" + responseText);
-                                copyLogToDownloads(context);
+//                                saveLogToFile(context,
+//                                        "RESPONSE CODE: " + response.code() +
+//                                                "\nRESPONSE BODY:\n" + responseText);
+//                                copyLogToDownloads(context);
 
                                 if (response.code() == 201) {
                                     result.setValue(true);
-
                                 } else {
                                     ToastUtils.showErrorToast(context,"Something went Wrong");
                                     result.setValue(false);
                                 }
 
                             } catch (Exception e) {
-                                saveLogToFile(context, "RESPONSE PARSE ERROR: " + e.getMessage());
-                                copyLogToDownloads(context);
+//                                saveLogToFile(context, "RESPONSE PARSE ERROR: " + e.getMessage());
+//                                copyLogToDownloads(context);
                                 result.setValue(false);
                             }
                         }
@@ -653,10 +657,10 @@ public class ApiRepository {
                                               @NonNull Throwable t) {
 
                             // 🔥 FAILURE LOG
-                            saveLogToFile(context,
-                                    "API FAILURE:\n" + t.getMessage());
-
-                            copyLogToDownloads(context);
+//                            saveLogToFile(context,
+//                                    "API FAILURE:\n" + t.getMessage());
+//
+//                            copyLogToDownloads(context);
 
                             Log.d("AttendanceService","Error"+t.getMessage());
 
@@ -666,10 +670,10 @@ public class ApiRepository {
 
         } catch (Exception e) {
 
-            saveLogToFile(context,
-                    "EXCEPTION OUTSIDE:\n" + e.getMessage());
-
-            copyLogToDownloads(context);
+//            saveLogToFile(context,
+//                    "EXCEPTION OUTSIDE:\n" + e.getMessage());
+//
+//            copyLogToDownloads(context);
 
             result.setValue(false);
         }
@@ -814,7 +818,7 @@ public class ApiRepository {
             });
         } catch (Exception e) {
 
-           Log.e("API_ERROR", "❌ Error preparing API request: " + e.getMessage(), e);
+            Log.e("API_ERROR", "❌ Error preparing API request: " + e.getMessage(), e);
             result.setValue(false);
         }
 
