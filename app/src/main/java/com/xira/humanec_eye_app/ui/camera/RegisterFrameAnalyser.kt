@@ -228,6 +228,32 @@ class RegisterFrameAnalyser(
             currentFaceBitmap =
                 BitmapUtils.Companion.cropRectFromBitmap(cameraFrameBitmap, face.boundingBox)
 
+//            val livenessScore = antiSpoofingAnalyzer.deSpoofing(currentFaceBitmap!!)
+//            // 1. Handle busy/skipped frames WITHOUT treating them as a spoof
+//            if (livenessScore == null) {
+//                withContext(Dispatchers.Main) {
+//                    isProcessing = false
+//                }
+//                return
+//            }
+//
+//            // 2. Evaluate the spoof threshold
+//            // NOTE: If the system still blocks REAL faces, change `<` to `>`
+//            // depending on whether ROUTE_INDEX = 6 outputs a Liveness Score or a Spoof Score.
+//            val spoofThreshold = 0.5f
+//            val isSpoof = livenessScore < spoofThreshold
+//
+//            if (isSpoof) {
+//                withContext(Dispatchers.Main) {
+//                    ToastUtils.showErrorToast(context, "Spoof detected! Please show a real face.", true)
+//                    isRegister = "Unknown"
+//                    boundingBoxOverlay.faceBoundingBoxes = ArrayList<Prediction>()
+//                    boundingBoxOverlay.invalidate()
+//                    isProcessing = false
+//                }
+//                return
+//            }
+
             // Only proceed with registration if not spoof
             val subject = model.getFaceEmbedding(currentFaceBitmap!!)
 

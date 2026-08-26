@@ -242,6 +242,7 @@ public class AttendanceService {
                                         r.empCode.equals(record.empCode) && r.timestamp == record.timestamp)) {
                                     writeAppLog("DEBUG", "Marking record as synced: " + record.empCode, null);
                                     record.synced = true;
+                                    punchIn(record.empName, record.empCode);
                                     pendingSyncs.remove(record.empCode + "_" + record.timestamp);
                                 }
                             }

@@ -78,27 +78,32 @@
 //    private fun normalizeImage(bitmap: Bitmap): Array<Array<FloatArray>> {
 //        val h = bitmap.height
 //        val w = bitmap.width
+//
+//        // 1. Pre-allocate the 3D array once
 //        val floatValues = Array(h) { Array(w) { FloatArray(6) } }
 //        val imageStd = 256f
-//
 //        val pixels = IntArray(h * w)
 //        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
 //
+//        // 2. Pre-allocate the HSV array outside the loop to prevent GC thrashing
+//        val hsv = FloatArray(3)
+//
+//        var pixelIndex = 0
 //        for (i in 0 until h) {
 //            for (j in 0 until w) {
-//                val `val` = pixels[i * w + j]
-//                val hsv = FloatArray(3)
+//                val `val` = pixels[pixelIndex++]
+//
+//                // Populate the pre-allocated HSV array
 //                Color.colorToHSV(`val`, hsv)
 //
-//                val hue = hsv[0] / 360
-//                val s = hsv[1]
-//                val v = hsv[2]
-//
-//                val r = ((`val` shr 16) and 0xFF) / imageStd
-//                val g = ((`val` shr 8) and 0xFF) / imageStd
-//                val b = (`val` and 0xFF) / imageStd
-//
-//                floatValues[i][j] = floatArrayOf(hue, s, v, r, g, b)
+//                // 3. Reuse the existing inner array instead of creating a new one
+//                val targetArray = floatValues[i][j]
+//                targetArray[0] = hsv[0] / 360f
+//                targetArray[1] = hsv[1]
+//                targetArray[2] = hsv[2]
+//                targetArray[3] = ((`val` shr 16) and 0xFF) / imageStd
+//                targetArray[4] = ((`val` shr 8) and 0xFF) / imageStd
+//                targetArray[5] = (`val` and 0xFF) / imageStd
 //            }
 //        }
 //        return floatValues

@@ -26,7 +26,7 @@ public interface ApiService {
             @Body Map<String, Object> params
     );
 
-    @POST("/xiraeye/api/Authorization/api/Authorization/UserDetail")
+    @POST("eye/user-details")
     Call<List<Map<String, Object>>> getUserDetail(@Body Map<String,String> body);
 
     @GET("eye/business-list")
