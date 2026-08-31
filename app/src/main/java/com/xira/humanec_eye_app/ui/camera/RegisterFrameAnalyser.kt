@@ -28,17 +28,17 @@ class RegisterFrameAnalyser(
     private var boundingBoxOverlay: BoundingBoxOverlay,
     private var model: FaceNetModel
 ) : ImageAnalysis.Analyzer {
-//    private val antiSpoofingAnalyzer = AntiSpoofingAnalyzer(context)
+    private val antiSpoofingAnalyzer = AntiSpoofingAnalyzer(context)
 
     private val realTimeOpts = FaceDetectorOptions.Builder()
         .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-        .setMinFaceSize(0.9f)
+        .setMinFaceSize(0.2f)
         .build()
 
     private var lastDetectedName: String? = null
     private var confirmationCount = 0
     private var unknownConfirmationCount = 0  // Track consecutive "Unknown" frames
-    private val requiredConfirmations = 5
+    private val requiredConfirmations = 3
     private var isFirstCompareComplete = false  // Block registration until enough frames compared
 
     private val detector = FaceDetection.getClient(realTimeOpts)
@@ -77,61 +77,81 @@ class RegisterFrameAnalyser(
             return
         }
         lastProcessTime = currentTime
+
         if (isProcessing) {
             image.close()
             return
-        } else {
-            isProcessing = true
+        }
 
-            val cameraXImage = image.image!!
-            var frameBitmap = createBitmap(cameraXImage.width, cameraXImage.height)
-            frameBitmap.copyPixelsFromBuffer(image.planes[0].buffer)
-            frameBitmap = BitmapUtils.Companion.rotateBitmap(
-                frameBitmap,
-                image.imageInfo.rotationDegrees.toFloat()
-            )
+        isProcessing = true
+        val cameraXImage = image.image ?: return run {
+            isProcessing = false
+            image.close()
+        }
 
-            if (!boundingBoxOverlay.areDimsInit) {
-                boundingBoxOverlay.frameHeight = frameBitmap.height
-                boundingBoxOverlay.frameWidth = frameBitmap.width
-            }
+        var frameBitmap = createBitmap(cameraXImage.width, cameraXImage.height)
+        frameBitmap.copyPixelsFromBuffer(image.planes[0].buffer)
+        frameBitmap = BitmapUtils.Companion.rotateBitmap(
+            frameBitmap,
+            image.imageInfo.rotationDegrees.toFloat()
+        )
 
-            val inputImage = InputImage.fromBitmap(frameBitmap, 0)
-            detector.process(inputImage)
-                .addOnSuccessListener { faces ->
-                    CoroutineScope(Dispatchers.Default).launch {
-                        if (isUserWithinDistance(faces, frameBitmap)) {
-                            if (isFaceCentered(faces, frameBitmap)) {
-                                runModel(faces, frameBitmap)
+        if (!boundingBoxOverlay.areDimsInit) {
+            boundingBoxOverlay.frameHeight = frameBitmap.height
+            boundingBoxOverlay.frameWidth = frameBitmap.width
+        }
 
-                            } else {
-                                withContext(Dispatchers.Main) {
-                                    isRegister = "Unknown"
-                                    boundingBoxOverlay.faceBoundingBoxes = ArrayList<Prediction>()
-                                    boundingBoxOverlay.invalidate()
-                                    isProcessing = false
-                                    currentFaceBitmap = null
-                                }
-                            }
-                        } else {
+        val inputImage = InputImage.fromBitmap(frameBitmap, 0)
+        detector.process(inputImage)
+            .addOnSuccessListener { faces ->
+                CoroutineScope(Dispatchers.Default).launch {
+                    if (faces.isNotEmpty()) {
+                        // Get the largest face
+                        val nearestFace = faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() } ?: faces[0]
+                        val faceListForChecks = listOf(nearestFace)
+
+                        var label = ""
+                        var proceedToML = true
+
+                        // OPTIMIZATION: Always draw the box, just change the text label if conditions fail
+                        if (!isUserWithinDistance(faceListForChecks, frameBitmap)) {
+                            label = "Move Closer"
+                            proceedToML = false
+                        } else if (!isFaceCentered(faceListForChecks, frameBitmap)) {
+                            label = "Center Face"
+                            proceedToML = false
+                        } else if (!isLightingValid(faceListForChecks, frameBitmap)) {
+                            label = "Poor Lighting"
+                            proceedToML = false
+                        }
+
+                        if (!proceedToML) {
                             withContext(Dispatchers.Main) {
-                                isRegister = "Unknown"
-                                boundingBoxOverlay.faceBoundingBoxes = ArrayList<Prediction>()
+                                boundingBoxOverlay.faceBoundingBoxes = arrayListOf(Prediction(nearestFace.boundingBox, label))
                                 boundingBoxOverlay.invalidate()
                                 isProcessing = false
                                 currentFaceBitmap = null
+                                isRegister = "Unknown"
                             }
+                        } else {
+                            // Conditions met: Run Anti-Spoofing and FaceNet
+                            notRegisterFaceDetect(faceListForChecks, frameBitmap)
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            boundingBoxOverlay.faceBoundingBoxes = ArrayList()
+                            boundingBoxOverlay.invalidate()
+                            isProcessing = false
+                            currentFaceBitmap = null
+                            isRegister = "Unknown"
                         }
                     }
                 }
-                .addOnCompleteListener {
-                    image.close()
-                    isProcessing = false
-                    currentFaceBitmap = null
-                }
-        }
+            }
+            .addOnCompleteListener {
+                image.close() // Close image but let coroutine reset isProcessing
+            }
     }
-
     private fun isUserWithinDistance(faces: List<Face>, frameBitmap: Bitmap): Boolean {
         if (faces.isEmpty()) return false
         val nearestFace = faces[0]
@@ -139,7 +159,8 @@ class RegisterFrameAnalyser(
         val focalLengthPixels = 1000f
         val actualFaceWidthMeters = 0.15f
         val estimatedDistanceMeters = (focalLengthPixels * actualFaceWidthMeters) / faceWidthPixels
-        return estimatedDistanceMeters <= 1f
+        // Relaxed from 1.0f to 1.5f to easily allow registration at arm's length
+        return estimatedDistanceMeters <= 1.5f
     }
 
     private fun isFaceCentered(faces: List<Face>, frameBitmap: Bitmap): Boolean {
@@ -150,9 +171,9 @@ class RegisterFrameAnalyser(
         val frameCenterX = frameBitmap.width / 2
         val frameCenterY = frameBitmap.height / 2
 
-        // Allow some tolerance for centering
-        val toleranceX = frameBitmap.width * 0.1
-        val toleranceY = frameBitmap.height * 0.1
+        // Relaxed from 10% (0.1) to 30% (0.3) tolerance
+        val toleranceX = frameBitmap.width * 0.3
+        val toleranceY = frameBitmap.height * 0.3
 
         return (faceCenterX.toDouble() in (frameCenterX - toleranceX)..(frameCenterX + toleranceX) &&
                 (faceCenterY.toDouble() in (frameCenterY - toleranceY)..(frameCenterY + toleranceY)))
@@ -213,49 +234,46 @@ class RegisterFrameAnalyser(
     }
 
     suspend fun notRegisterFaceDetect(faces: List<Face>, cameraFrameBitmap: Bitmap) {
-        val predictions = ArrayList<Prediction>()
-        if (faces.isEmpty()) {
-            withContext(Dispatchers.Main) {
-                boundingBoxOverlay.faceBoundingBoxes = predictions
-                boundingBoxOverlay.invalidate()
-                isProcessing = false
-            }
-            return
-        }
+        if (faces.isEmpty()) return
 
         try {
             val face = faces[0]
-            currentFaceBitmap =
-                BitmapUtils.Companion.cropRectFromBitmap(cameraFrameBitmap, face.boundingBox)
 
-//            val livenessScore = antiSpoofingAnalyzer.deSpoofing(currentFaceBitmap!!)
-//            // 1. Handle busy/skipped frames WITHOUT treating them as a spoof
-//            if (livenessScore == null) {
-//                withContext(Dispatchers.Main) {
-//                    isProcessing = false
-//                }
-//                return
-//            }
-//
-//            // 2. Evaluate the spoof threshold
-//            // NOTE: If the system still blocks REAL faces, change `<` to `>`
-//            // depending on whether ROUTE_INDEX = 6 outputs a Liveness Score or a Spoof Score.
-//            val spoofThreshold = 0.5f
-//            val isSpoof = livenessScore < spoofThreshold
-//
-//            if (isSpoof) {
-//                withContext(Dispatchers.Main) {
-//                    ToastUtils.showErrorToast(context, "Spoof detected! Please show a real face.", true)
-//                    isRegister = "Unknown"
-//                    boundingBoxOverlay.faceBoundingBoxes = ArrayList<Prediction>()
-//                    boundingBoxOverlay.invalidate()
-//                    isProcessing = false
-//                }
-//                return
-//            }
+            // 1. LIVENESS CHECK (Anti-Spoofing)
+            val bounds = face.boundingBox
+            val marginX = (bounds.width() * 0.2f).toInt()
+            val marginY = (bounds.height() * 0.2f).toInt()
+            val expandedRect = android.graphics.Rect(
+                Math.max(0, bounds.left - marginX),
+                Math.max(0, bounds.top - marginY),
+                Math.min(cameraFrameBitmap.width, bounds.right + marginX),
+                Math.min(cameraFrameBitmap.height, bounds.bottom + marginY)
+            )
 
-            // Only proceed with registration if not spoof
+            val antiSpoofBitmap = BitmapUtils.Companion.cropRectFromBitmap(cameraFrameBitmap, expandedRect)
+            val spoofScore = antiSpoofingAnalyzer.deSpoofing(antiSpoofBitmap)
+
+            if (spoofScore == null) {
+                withContext(Dispatchers.Main) { isProcessing = false }
+                return
+            }
+
+            if (spoofScore > 0.25f) {
+                withContext(Dispatchers.Main) {
+                    boundingBoxOverlay.faceBoundingBoxes = arrayListOf(Prediction(face.boundingBox, "Spoof Detected"))
+                    boundingBoxOverlay.invalidate()
+                    isProcessing = false
+                    currentFaceBitmap = null
+                    isRegister = "Unknown"
+                }
+                return
+            }
+
+            // 2. TIGHT CROP & FACENET REGISTRATION
+            currentFaceBitmap = BitmapUtils.Companion.cropRectFromBitmap(cameraFrameBitmap, face.boundingBox)
             val subject = model.getFaceEmbedding(currentFaceBitmap!!)
+
+            var displayLabel = "Processing..."
 
             if (faceList.isNotEmpty()) {
                 for (i in faceList.indices) {
@@ -264,10 +282,8 @@ class RegisterFrameAnalyser(
                     } else {
                         L2Norm(subject, faceList[i].second)
                     }
-
                     nameScoreHashmap[faceList[i].first] = arrayListOf(similarityScore)
                 }
-
                 val avgScores = nameScoreHashmap.values.map { it.toFloatArray().average() }
                 val names = nameScoreHashmap.keys.toTypedArray()
                 nameScoreHashmap.clear()
@@ -275,74 +291,59 @@ class RegisterFrameAnalyser(
                 val bestScoreUserName = if (metricToBeUsed == "cosine") {
                     if (avgScores.maxOrNull()!! > model.model.cosineThreshold) {
                         names[avgScores.indexOf(avgScores.maxOrNull()!!)]
-                    } else {
-                        "Unknown"
-                    }
+                    } else "Unknown"
                 } else {
-                    if (avgScores.minOrNull()!! > model.model.l2Threshold) {
-                        "Unknown"
-                    } else {
+                    if (avgScores.minOrNull()!! < model.model.l2Threshold) {
                         names[avgScores.indexOf(avgScores.minOrNull()!!)]
-                    }
+                    } else "Unknown"
                 }
 
-                // Update confirmation logic
                 if (bestScoreUserName != "Unknown") {
-                    // Face potentially matches a registered face
-                    unknownConfirmationCount = 0  // Reset unknown counter
+                    unknownConfirmationCount = 0
                     if (lastDetectedName == bestScoreUserName) {
                         confirmationCount++
-                        Log.d(
-                            "Registration",
-                            "Confirmation count for $bestScoreUserName: $confirmationCount"
-                        )
-
                         if (confirmationCount >= requiredConfirmations) {
                             isRegister = bestScoreUserName
-                            isFirstCompareComplete = true  // Only allow after enough confirmations
+                            isFirstCompareComplete = true
+                            displayLabel = "Already Registered"
                         }
                     } else {
                         lastDetectedName = bestScoreUserName
                         confirmationCount = 1
                         isRegister = "Unknown"
-                        isFirstCompareComplete = false  // Reset - new face detected
+                        isFirstCompareComplete = false
                     }
                 } else {
-                    // Face is unknown (not registered)
                     lastDetectedName = null
                     confirmationCount = 0
                     unknownConfirmationCount++
                     isRegister = "Unknown"
-                    
-                    // Only allow registration after confirming face is truly unknown
                     if (unknownConfirmationCount >= requiredConfirmations) {
                         isFirstCompareComplete = true
+                        displayLabel = "Ready to Register"
                     }
                 }
-
-                predictions.add(Prediction(face.boundingBox, ""))
             } else {
-                // No faces in faceList - first registration ever
                 unknownConfirmationCount++
                 isRegister = "Unknown"
                 if (unknownConfirmationCount >= requiredConfirmations) {
                     isFirstCompareComplete = true
+                    displayLabel = "Ready to Register"
                 }
-                predictions.add(Prediction(face.boundingBox, ""))
             }
+
+            withContext(Dispatchers.Main) {
+                // Keep bounding box on screen with status text
+                boundingBoxOverlay.faceBoundingBoxes = arrayListOf(Prediction(face.boundingBox, displayLabel))
+                boundingBoxOverlay.invalidate()
+                isProcessing = false
+            }
+
         } catch (e: Exception) {
-            Log.e("Model", "Exception in RecogniseFrameAnalyser: ${e.message}")
-        }
-        Log.e("Performance", "Inference time -> ${System.currentTimeMillis() - t1}")
-
-
-        withContext(Dispatchers.Main) {
-            boundingBoxOverlay.faceBoundingBoxes = predictions
-            boundingBoxOverlay.invalidate()
-            isProcessing = false
+            Log.e("Model", "Exception in RegisterFrameAnalyser: ${e.message}")
+            withContext(Dispatchers.Main) { isProcessing = false }
         }
     }
-
     private fun L2Norm(x1: FloatArray, x2: FloatArray): Float {
         return sqrt(x1.mapIndexed { i, xi -> (xi - x2[i]).pow(2) }.sum())
     }
